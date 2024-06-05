@@ -1,4 +1,4 @@
-# Stargazer-ideation-and-prototype-updates
+# Stargazer
 Just for fun .
 
 most people are too buys in this world and they dont see up the sky , ignore the true reality . 
