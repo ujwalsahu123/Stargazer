@@ -2,9 +2,9 @@
 Just for fun .
 
 most people are too buys in this world and they dont see up the sky , ignore the true reality . 
-i felt the same and wanna make something to solve the problem i faced . 
+i felt the same and dived into whats beyond the sky , wanna make something to solve the problem i faced . 
 as a beginner in stargazing its very hard to do it . 
-there is no cheap and quick think which can be infomative and fun . 
+there is no cheap and quick thing which can be infomative and fun . 
 sterallium and night sky are great , but they are not enough . 
 
 The stargazer is device which uses a green laser to point to any celestial object selected by the user. you just need to install stellarium and select an object . the device will automatically point the lazer to it . dosent matter what your location , time , device orientation is .             (credits-jjrobots) 
