@@ -56,6 +56,7 @@ ardunio project website link.
 ![image](https://github.com/ujwalsahu123/Stargazer-ideation-and-prototype-updates/assets/132041436/5e32b682-6da7-4bfc-b587-126a9c94a41d)
 
 
+![Uploading image.png…]()
 
 
 
