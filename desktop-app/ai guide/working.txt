@@ -1,0 +1,22 @@
+##### here , it will take you to tonights jouney to the night sky .  it will show you one by one 
+all the object that are above you in the night sky . with info, facts , theories , mysteries , science , etc .
+and you can also interact with it using voice chat . 
+
+so no stellarium here . 
+
+
+ now one by one objects from the list -
+
+start the GUI part .
+4 which each object info is being said - in the desktop gui there should be picture or 3d view of that object .  
+5 there should be a drop down menu in the gui having all the objects name (that are present) - so you can jump to the next or previous objects 
+6 after each object is preseted stop .
+
+so after the object list is prepared , gui should start , and in the left 70-80 percent of the screen there should be vedio / img or 3d view of that object .
+and on the right part there should be a drop down using which you can jump to other objects .
+and once all object are completed then stop . 
+
+
+how voice chat (button) . and in voice chat ( how pause ,etc will happen .) ( i think easy - press chat button to voice chat using voice to txt , and then send that txt to api . but then also how RESUME THE OLD info .)
+
+

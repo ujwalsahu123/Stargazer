@@ -1,0 +1,24 @@
+
+this is not permenent offset values like - acc ,gyro offsets .
+take reading again with new setup (10,000+) . and then calculate offset by magneto , 
+and use that offset in code and calculations . 
+
+headphone , laptop , where you setup the sensor , nearby objects , wire , etc 
+these all effect the readings . 
+so new setup , new readings and again caliberate to get offset . and make caliberated xyz.
+
+and the magentic norm value for magneto -> get form noaa elevation mobile website ( and
+convert it from nanoT to microT) . 
+(also that magnetic norm value changes per location , per day .)
+
+also headphones , etc all matter . and if you change setup little bit after 10,000 readings 
+like - put headphone , or changed chair or desk , etc then yaw value shitf ( true north will be 
+5-10... degree shift) and all that 10,000 readings will be waste . 
+
+
+////////////////////////////////////////////////  update this after each calib .
+
+A = np.array([[1.168384, 0.004008, -0.001287], 
+              [ 0.004008, 1.229647, -0.087849],
+              [-0.001287, -0.087849, 1.265104]])
+b = np.array([-2.508501, 32.722110, -8.102990])

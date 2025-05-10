@@ -1,0 +1,1775 @@
+mpu9250 data - roll , pitch , bad yow . (put sensor on table for good 89.9 , -89.9 values .)
+
+
+#include <Wire.h>
+#include <MPU9250_asukiaaa.h>
+
+MPU9250_asukiaaa mySensor;
+
+float ax, ay, az;  // Accelerometer readings
+float gx, gy, gz;  // Gyroscope readings
+
+float roll, pitch, yaw;  // Roll, pitch, and yaw
+float yawAcc, yawGyro;    // Accelerometer and gyroscope yaw estimates
+float previousYaw = 0;    // Previous yaw value
+float alpha = 0.98;       // Complementary filter constant
+float dt = 0.01;          // Time step (adjust based on loop time)
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin();
+  mySensor.setWire(&Wire);
+  mySensor.beginAccel();
+  mySensor.beginGyro();
+
+  delay(1000);  // Wait for sensor to stabilize
+  
+  Serial.println("Yaw estimation using complementary filter (without magnetometer):");
+}
+
+void loop() {
+  // Update sensor readings
+  mySensor.accelUpdate();
+  mySensor.gyroUpdate();
+
+  // Get accelerometer data
+  ax = mySensor.accelX();
+  ay = mySensor.accelY();
+  az = mySensor.accelZ();
+
+  // Get gyroscope data
+  gx = mySensor.gyroX();
+  gy = mySensor.gyroY();
+  gz = mySensor.gyroZ();
+
+  // Calculate roll and pitch using accelerometer data
+  roll = atan2(ay, az) * 180.0 / PI;
+  pitch = atan2(-ax, sqrt(ay * ay + az * az)) * 180.0 / PI;
+
+  // Estimate yaw using accelerometer and gyroscope
+  yawAcc = atan2(ay, ax) * 180.0 / PI;  // Yaw estimate from accelerometer (only valid for tilt)
+  yawGyro = previousYaw + gz * dt;      // Yaw estimate from gyroscope (integrating angular velocity)
+
+  // Apply complementary filter to combine accelerometer and gyroscope data
+  yaw = alpha * (yawGyro) + (1.0 - alpha) * yawAcc;  // Combine both estimates
+
+  // Update previous yaw value for next loop
+  previousYaw = yaw;
+
+  // Print roll, pitch, and yaw
+  Serial.print("Roll: ");
+  Serial.print(roll, 1);
+  Serial.print("  Pitch: ");
+  Serial.print(pitch, 1);
+  Serial.print("  Yaw: ");
+  Serial.println(yaw, 1);
+
+  delay(10);  // Adjust delay to match your sampling rate (dt)
+}
+
+************************************
+
+
+
+
+
+DMP of mpu - roll pitch yaw
+
+initially takes 2 sec to give accurate data . 
+yaw is 180 make it 360 
+yaw data shifts . 
+
+#include <Wire.h>
+#include <MPU6050_6Axis_MotionApps20.h>  // i2cdevlib MPU6050 library for DMP support
+
+MPU6050 mpu;
+
+bool dmpReady = false;
+uint8_t mpuIntStatus;
+uint8_t devStatus;
+uint16_t packetSize;
+uint8_t fifoBuffer[64];
+
+// Orientation variables
+Quaternion q;
+VectorFloat gravity;
+float ypr[3];
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin();
+
+  // Initialize MPU
+  mpu.initialize();
+  devStatus = mpu.dmpInitialize();
+
+  if (devStatus == 0) {
+    mpu.setDMPEnabled(true);
+    dmpReady = true;
+    packetSize = mpu.dmpGetFIFOPacketSize();
+    Serial.println("DMP initialized successfully");
+  } else {
+    Serial.print("DMP initialization failed with code ");
+    Serial.println(devStatus);
+  }
+}
+
+void loop() {
+  if (!dmpReady) return;
+
+  while (mpu.getFIFOCount() >= packetSize) {
+    mpu.getFIFOBytes(fifoBuffer, packetSize);
+    mpu.dmpGetQuaternion(&q, fifoBuffer);
+    mpu.dmpGetGravity(&gravity, &q);
+    mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+
+    // Convert yaw, pitch, roll from radians to degrees
+    ypr[0] *= 180.0 / PI;
+    ypr[1] *= 180.0 / PI;
+    ypr[2] *= 180.0 / PI;
+
+    Serial.print("Yaw: ");
+    Serial.print(ypr[0]);
+    Serial.print("  Pitch: ");
+    Serial.print(ypr[1]);
+    Serial.print("  Roll: ");
+    Serial.println(ypr[2]);
+  }
+
+  delay(10);
+}
+
+
+*************************************
+
+
+
+
+slight changes ( no yaw , decimal , pitch sign change)
+
+
+#include <Wire.h>
+#include <MPU6050_6Axis_MotionApps20.h>  // i2cdevlib MPU6050 library for DMP support
+
+MPU6050 mpu;
+
+bool dmpReady = false;
+uint8_t mpuIntStatus;
+uint8_t devStatus;
+uint16_t packetSize;
+uint8_t fifoBuffer[64];
+
+// Orientation variables
+Quaternion q;
+VectorFloat gravity;
+float ypr[3];
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin();
+
+  // Initialize MPU
+  mpu.initialize();
+  devStatus = mpu.dmpInitialize();
+
+  if (devStatus == 0) {
+    mpu.setDMPEnabled(true);
+    dmpReady = true;
+    packetSize = mpu.dmpGetFIFOPacketSize();
+    Serial.println("DMP initialized successfully");
+  } else {
+    Serial.print("DMP initialization failed with code ");
+    Serial.println(devStatus);
+  }
+}
+
+void loop() {
+  if (!dmpReady) return;
+
+  while (mpu.getFIFOCount() >= packetSize) {
+    mpu.getFIFOBytes(fifoBuffer, packetSize);
+    mpu.dmpGetQuaternion(&q, fifoBuffer);
+    mpu.dmpGetGravity(&gravity, &q);
+    mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+
+    // Convert yaw, pitch, roll from radians to degrees
+    ypr[0] *= 180.0 / PI;  // Yaw
+    ypr[1] *= 180.0 / PI;  // Pitch
+    ypr[2] *= 180.0 / PI;  // Roll
+
+    // Print only pitch and roll as integers
+    Serial.print("Pitch: ");
+    Serial.print(-1*((int)ypr[1]));  // Casting to int to remove decimal points
+    Serial.print("  Roll: ");
+    Serial.println((int)ypr[2]);  // Casting to int to remove decimal points
+  }
+
+  delay(10);
+}
+
+
+********************************************
+
+motor 
+/*
+  Basic OPeration Stepper Motor that uses ULN2003
+  Author: Bonezegei (Jofel Batutay)
+  Date:  March 2024
+*/
+
+#include "Bonezegei_ULN2003_Stepper.h"
+//Param1 Input Pin1
+//Param1 Input Pin2
+//Param1 Input Pin3
+//Param1 Input Pin4
+Bonezegei_ULN2003_Stepper Stepper(8, 9, 10, 11);
+
+// Set This According to your Preference
+#define FORWARD 1
+#define REVERSE 0
+
+void setup() {
+  //Inititalize Pins
+  Stepper.begin();
+
+  // Speed in Milli seconds per step
+  // Default Value is 3 
+  Stepper.setSpeed(5);
+}
+
+void loop() {
+
+  // step(Param1, Param2)
+  // Param 1 Direction (Forware or Reverse)
+  // Param2 Number of Steps
+  Stepper.step(FORWARD, 2000);
+
+  // stepAngle(Param1, Param2)
+  // Param 1 Direction (Forware or Reverse)
+  // Param2 Angle from initial point
+  // Stepper.stepAngle(FORWARD, 90);
+  
+  delay(2000);
+  Stepper.step(REVERSE, 2000);
+  delay(2000);
+}
+
+
+*******************************
+
+https://github.com/asukiaaa/MPU9250_asukiaaa/issues/22
+
+first run all examples of asukkii . 
+
+
+***********************************
+
+
+#include <Wire.h>
+#include <MPU6050_6Axis_MotionApps20.h>
+#include "Bonezegei_ULN2003_Stepper.h"
+
+#define IN1 8
+#define IN2 9
+#define IN3 10
+#define IN4 11
+
+#define NUM_READINGS 10  // Number of samples for smoothing
+
+Bonezegei_ULN2003_Stepper stepper(IN1, IN2, IN3, IN4);
+MPU6050 mpu;
+
+bool dmpReady = false;
+uint8_t devStatus;
+uint16_t packetSize;
+uint8_t fifoBuffer[64];
+
+Quaternion q;
+VectorFloat gravity;
+float ypr[3];
+
+float pitchValues[NUM_READINGS];  // Array to store pitch values for smoothing
+int pitchIndex = 0;  // Index for the array
+float smoothedPitch = 0.0;
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin();
+
+  // Initialize MPU
+  mpu.initialize();
+  devStatus = mpu.dmpInitialize();
+
+  if (devStatus == 0) {
+    mpu.setDMPEnabled(true);
+    dmpReady = true;
+    packetSize = mpu.dmpGetFIFOPacketSize();
+    Serial.println("DMP initialized successfully");
+  } else {
+    Serial.print("DMP initialization failed with code ");
+    Serial.println(devStatus);
+  }
+
+  // Initialize Stepper Motor
+  stepper.begin();
+  stepper.setSpeed(3);  // Set speed to 3 ms per step, adjust as needed
+
+  // Initialize pitch values array to 0
+  for (int i = 0; i < NUM_READINGS; i++) {
+    pitchValues[i] = 0;
+  }
+}
+
+// Function to read pitch and calculate the smoothed value
+void updatePitch() {
+  if (dmpReady) {
+    while (mpu.getFIFOCount() >= packetSize) {
+      mpu.getFIFOBytes(fifoBuffer, packetSize);
+      mpu.dmpGetQuaternion(&q, fifoBuffer);
+      mpu.dmpGetGravity(&gravity, &q);
+      mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+
+      // Convert pitch to degrees
+      ypr[1] *= 180.0 / PI;  // Pitch in degrees
+
+      // Store the current pitch value in the array
+      pitchValues[pitchIndex] = ypr[1];
+      pitchIndex = (pitchIndex + 1) % NUM_READINGS;  // Circular index
+
+      // Calculate the smoothed pitch value
+      smoothedPitch = 0;
+      for (int i = 0; i < NUM_READINGS; i++) {
+        smoothedPitch += pitchValues[i];
+      }
+      smoothedPitch /= NUM_READINGS;
+
+      // Display smoothed pitch value
+      Serial.print("Smoothed Pitch: ");
+      Serial.println(smoothedPitch);
+    }
+  }
+}
+
+// Function to control the motor based on pitch
+void controlMotorBasedOnPitch() {
+  if (smoothedPitch > 0) {
+    // Positive pitch, rotate clockwise
+    stepper.step(1, 10);  // Rotate clockwise
+  } else if (smoothedPitch < 0) {
+    // Negative pitch, rotate counterclockwise
+    stepper.step(0, 10);  // Rotate counterclockwise
+  }
+}
+
+void loop() {
+  updatePitch();          // Update pitch and calculate smoothed value
+  controlMotorBasedOnPitch();  // Control motor based on smoothed pitch value
+  delay(10);              // Small delay for smooth updates
+}
+
+
+****************************************
+
+this works but always -  at the start keep the mpu sensor stable and then try to move it slowly . otherwise crazy value . 
+
+
+#include <Wire.h>
+#include <MPU6050_6Axis_MotionApps20.h>
+#include "Bonezegei_ULN2003_Stepper.h"
+
+// Motor Pins
+#define IN1 8
+#define IN2 9
+#define IN3 10
+#define IN4 11
+
+// Target Pitch Range
+#define TARGET_MIN_PITCH 10.0   // Minimum acceptable pitch value
+#define TARGET_MAX_PITCH 40.0  // Maximum acceptable pitch value
+
+// Initialize the stepper motor and MPU
+Bonezegei_ULN2003_Stepper stepper(IN1, IN2, IN3, IN4);
+MPU6050 mpu;
+
+// Global variables
+bool dmpReady = false;
+uint8_t devStatus;
+uint16_t packetSize;
+uint8_t fifoBuffer[64];
+float currentPitch = 0.0;
+
+// Initialize MPU and Stepper
+void setup() {
+  Serial.begin(115200);
+  Wire.begin();
+
+  // MPU setup
+  mpu.initialize();
+  devStatus = mpu.dmpInitialize();
+  if (devStatus == 0) {
+    mpu.setDMPEnabled(true);
+    dmpReady = true;
+    packetSize = mpu.dmpGetFIFOPacketSize();
+    Serial.println("DMP initialized successfully");
+  } else {
+    Serial.print("DMP initialization failed with code ");
+    Serial.println(devStatus);
+  }
+
+  // Stepper Motor setup
+  stepper.begin();
+  stepper.setSpeed(3);  // Set a relatively fast speed
+}
+
+// Read pitch continuously to keep it stable
+void readPitch() {
+  if (!dmpReady) return;
+
+  // Check if there's data available in the FIFO buffer
+  while (mpu.getFIFOCount() >= packetSize) {
+    mpu.getFIFOBytes(fifoBuffer, packetSize);
+
+    Quaternion q;
+    VectorFloat gravity;
+    float ypr[3];  // Array to hold yaw, pitch, and roll values
+    mpu.dmpGetQuaternion(&q, fifoBuffer);
+    mpu.dmpGetGravity(&gravity, &q);
+    mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+
+    // Convert pitch to degrees and store in currentPitch
+    currentPitch = ypr[1] * 180.0 / PI;  // ypr[1] is the pitch value
+  }
+}
+
+// Function to adjust motor based on current pitch and print the status
+void adjustMotorToPitchRange() {
+  if (currentPitch < TARGET_MIN_PITCH) {
+    // Rotate clockwise if pitch is below the target range
+    stepper.step(1, 10);  
+    Serial.print("Pitch: ");
+    Serial.print(currentPitch);
+    Serial.println(" (Clockwise)");
+  } else if (currentPitch > TARGET_MAX_PITCH) {
+    // Rotate counterclockwise if pitch is above the target range
+    stepper.step(0, 10);
+    Serial.print("Pitch: ");
+    Serial.print(currentPitch);
+    Serial.println(" (Anticlockwise)");
+  } else {
+    // Stop motor if pitch is within the target range
+    Serial.print("Pitch: ");
+    Serial.print(currentPitch);
+    Serial.println(" (Stop)");
+  }
+}
+
+void loop() {
+  // Continuously update pitch
+  readPitch();
+
+  // Adjust motor only if necessary based on pitch
+  adjustMotorToPitchRange();
+
+}
+
+
+
+
+
+******************************************
+
+
+
+
+
+#include <Wire.h>
+#include <MPU6050_6Axis_MotionApps20.h>
+#include "Bonezegei_ULN2003_Stepper.h"
+
+// Motor Pins
+#define IN1 8
+#define IN2 9
+#define IN3 10
+#define IN4 11
+
+// Target Pitch Range
+#define TARGET_MIN_PITCH 60.0   // Minimum acceptable pitch value
+#define TARGET_MAX_PITCH 70.0  // Maximum acceptable pitch value
+
+// Initialize the stepper motor and MPU
+Bonezegei_ULN2003_Stepper stepper(IN1, IN2, IN3, IN4);
+MPU6050 mpu;
+
+// Global variables
+bool dmpReady = false;
+uint8_t devStatus;
+uint16_t packetSize;
+uint8_t fifoBuffer[64];
+float currentPitch = 0.0;
+
+// Initialize MPU and Stepper
+void setup() {
+  Serial.begin(115200);
+  Wire.begin();
+
+  // MPU setup
+  mpu.initialize();
+  devStatus = mpu.dmpInitialize();
+  if (devStatus == 0) {
+    mpu.setDMPEnabled(true);
+    dmpReady = true;
+    packetSize = mpu.dmpGetFIFOPacketSize();
+    Serial.println("DMP initialized successfully");
+  } else {
+    Serial.print("DMP initialization failed with code ");
+    Serial.println(devStatus);
+  }
+
+  // Stepper Motor setup
+  stepper.begin();
+  stepper.setSpeed(3);  // Set a relatively fast speed
+}
+
+// Read pitch continuously to keep it stable
+void readPitch() {
+  if (!dmpReady) return;
+
+  // Check if there's data available in the FIFO buffer
+  while (mpu.getFIFOCount() >= packetSize) {
+    mpu.getFIFOBytes(fifoBuffer, packetSize);
+
+    Quaternion q;
+    VectorFloat gravity;
+    float ypr[3];  // Array to hold yaw, pitch, and roll values
+    mpu.dmpGetQuaternion(&q, fifoBuffer);
+    mpu.dmpGetGravity(&gravity, &q);
+    mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+
+    // Convert pitch to degrees and store in currentPitch
+    currentPitch =-1 * (ypr[1] * 180.0 / PI);  // ypr[1] is the pitch value
+  }
+}
+
+// Function to adjust motor based on current pitch and print the status
+void adjustMotorToPitchRange() {
+  if (currentPitch < TARGET_MIN_PITCH) {
+    // Rotate clockwise if pitch is below the target range
+    stepper.step(1, 10);  
+    Serial.print("Pitch: ");
+    Serial.print(currentPitch);
+    Serial.println(" (Clockwise)");
+  } else if (currentPitch > TARGET_MAX_PITCH) {
+    // Rotate counterclockwise if pitch is above the target range
+    stepper.step(0, 10);
+    Serial.print("Pitch: ");
+    Serial.print(currentPitch);
+    Serial.println(" (Anticlockwise)");
+  } else {
+    // Stop motor if pitch is within the target range
+    Serial.print("Pitch: ");
+    Serial.print(currentPitch);
+    Serial.println(" (Stop)");
+  }
+}
+
+void loop() {
+  // Continuously update pitch
+  readPitch();
+
+  // Adjust motor only if necessary based on pitch
+  adjustMotorToPitchRange();
+
+}
+
+
+
+
+
+
+
+************************************
+using roll for attitude . (roll is better choice for altitude )
+
+you can you it to get to 0 deg alt .
+
+
+#include <Wire.h>
+#include <MPU6050_6Axis_MotionApps20.h>
+#include "Bonezegei_ULN2003_Stepper.h"
+
+// Motor Pins
+#define IN1 8
+#define IN2 9
+#define IN3 10
+#define IN4 11
+
+// Target Roll Range
+#define TARGET_MIN_ROLL -0.2   // Minimum acceptable roll value
+#define TARGET_MAX_ROLL 0.2   // Maximum acceptable roll value
+
+// Initialize the stepper motor and MPU
+Bonezegei_ULN2003_Stepper stepper(IN1, IN2, IN3, IN4);
+MPU6050 mpu;
+
+// Global variables
+bool dmpReady = false;
+uint8_t devStatus;
+uint16_t packetSize;
+uint8_t fifoBuffer[64];
+float currentRoll = 0.0;
+
+// Initialize MPU and Stepper
+void setup() {
+  Serial.begin(115200);
+  Wire.begin();
+
+  // MPU setup
+  mpu.initialize();
+  devStatus = mpu.dmpInitialize();
+  if (devStatus == 0) {
+    mpu.setDMPEnabled(true);
+    dmpReady = true;
+    packetSize = mpu.dmpGetFIFOPacketSize();
+    Serial.println("DMP initialized successfully");
+  } else {
+    Serial.print("DMP initialization failed with code ");
+    Serial.println(devStatus);
+  }
+
+  // Stepper Motor setup
+  stepper.begin();
+  stepper.setSpeed(3);  // Set a relatively fast speed
+}
+
+// Read roll continuously to keep it stable
+void readRoll() {
+  if (!dmpReady) return;
+
+  // Check if there's data available in the FIFO buffer
+  while (mpu.getFIFOCount() >= packetSize) {
+    mpu.getFIFOBytes(fifoBuffer, packetSize);
+
+    Quaternion q;
+    VectorFloat gravity;
+    float ypr[3];  // Array to hold yaw, pitch, and roll values
+    mpu.dmpGetQuaternion(&q, fifoBuffer);
+    mpu.dmpGetGravity(&gravity, &q);
+    mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+
+    // Convert roll to degrees and store in currentRoll
+    currentRoll =(ypr[2] * 180.0 / PI);  // ypr[2] is the roll value
+  }
+}
+
+// Function to adjust motor based on current roll and print the status
+void adjustMotorToRollRange() {
+  if (currentRoll < TARGET_MIN_ROLL) {
+    // Rotate clockwise if roll is below the target range
+    stepper.step(0, 3);  
+    Serial.print("Roll: ");
+    Serial.print(currentRoll);
+    Serial.println(" (anitClockwise)");
+  } else if (currentRoll > TARGET_MAX_ROLL) {
+    // Rotate counterclockwise if roll is above the target range
+    stepper.step(1, 3);
+    Serial.print("Roll: ");
+    Serial.print(currentRoll);
+    Serial.println(" (clockwise)");
+  } else {
+    // Stop motor if roll is within the target range
+    Serial.print("Roll: ");
+    Serial.print(currentRoll);
+    Serial.println(" (Stop)");
+  }
+}
+
+void loop() {
+  // Continuously update roll
+  readRoll();
+
+  // Adjust motor only if necessary based on roll
+  adjustMotorToRollRange();
+
+  delay(50);  // Small delay to allow for stable reading
+}
+
+
+***********************************
+
+
+each step we see using our sensor .
+
+update this code  ( start speed , stepper.step ) value 
+
+
+
+this is waste , since we use - move till sensor value .
+(but values are fine . each step 0.176)
+
+ 
+
+#include <Wire.h>
+#include <MPU6050_6Axis_MotionApps20.h>
+#include "Bonezegei_ULN2003_Stepper.h"
+
+#define IN1 8
+#define IN2 9
+#define IN3 10
+#define IN4 11
+
+Bonezegei_ULN2003_Stepper stepper(IN1, IN2, IN3, IN4);
+MPU6050 mpu;
+
+bool dmpReady = false;
+uint8_t devStatus;
+uint16_t packetSize;
+uint8_t fifoBuffer[64];
+
+Quaternion q;
+VectorFloat gravity;
+float ypr[3];
+unsigned long lastStepTime = 0; // Store the last time the motor took a step
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin();
+
+  // Initialize MPU
+  mpu.initialize();
+  devStatus = mpu.dmpInitialize();
+
+  if (devStatus == 0) {
+    mpu.setDMPEnabled(true);
+    dmpReady = true;
+    packetSize = mpu.dmpGetFIFOPacketSize();
+    Serial.println("DMP initialized successfully");
+  } else {
+    Serial.print("DMP initialization failed with code ");
+    Serial.println(devStatus);
+  }
+
+  // Initialize Stepper Motor
+  stepper.begin();
+  stepper.setSpeed(2);  // Set a slow speed to move one step at a time
+}
+
+void loop() {
+  if (dmpReady) {
+    while (mpu.getFIFOCount() >= packetSize) {
+      mpu.getFIFOBytes(fifoBuffer, packetSize);
+      mpu.dmpGetQuaternion(&q, fifoBuffer);
+      mpu.dmpGetGravity(&gravity, &q);
+      mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+
+      // Convert roll to degrees and print with three decimals
+      ypr[2] *= 180.0 / PI;  // Roll in degrees
+      Serial.print("Roll: ");
+      Serial.println(ypr[2], 3); // Print roll value with 3 decimal places
+    }
+  }
+
+  // Take a motor step every second
+  unsigned long currentTime = millis();
+  if (currentTime - lastStepTime >= 5000) {
+    stepper.step(0, 50); // Take one step clockwise
+    lastStepTime = currentTime; // Update the last step time
+  }
+}
+
+
+
+*******************************
+
+
+smooth rotation when come close (in steps) so that we can achieve - 0.0 accuracy . 
+also - where you place the sensor on the stick (near close ) that also matter . 
+
+(for now max take accuracy in 2 deg , 1 deg)
+ex - (78 deg - 79 deg) target .
+
+
+#include <Wire.h>
+#include <MPU6050_6Axis_MotionApps20.h>
+#include "Bonezegei_ULN2003_Stepper.h"
+
+// Motor Pins
+#define IN1 8
+#define IN2 9
+#define IN3 10
+#define IN4 11
+
+// Target Roll Range
+#define TARGET_MIN_ROLL 0.0     // Minimum acceptable roll value
+#define TARGET_MAX_ROLL 2.0    // Maximum acceptable roll value
+#define SLOW_DOWN_RANGE 10.0    // Slow down within ±10 degrees of the target
+
+// Initialize the stepper motor and MPU
+Bonezegei_ULN2003_Stepper stepper(IN1, IN2, IN3, IN4);
+MPU6050 mpu;
+
+// Global variables
+bool dmpReady = false;
+uint8_t devStatus;
+uint16_t packetSize;
+uint8_t fifoBuffer[64];
+float currentRoll = 0.0;
+
+// Initialize MPU and Stepper
+void setup() {
+  Serial.begin(115200);
+  Wire.begin();
+
+  // MPU setup
+  mpu.initialize();
+  devStatus = mpu.dmpInitialize();
+  if (devStatus == 0) {
+    mpu.setDMPEnabled(true);
+    dmpReady = true;
+    packetSize = mpu.dmpGetFIFOPacketSize();
+    Serial.println("DMP initialized successfully");
+  } else {
+    Serial.print("DMP initialization failed with code ");
+    Serial.println(devStatus);
+  }
+
+  // Stepper Motor setup
+  stepper.begin();
+  stepper.setSpeed(2);  // Initial fast speed
+}
+
+// Read roll continuously to keep it stable
+void readRoll() {
+  if (!dmpReady) return;
+
+  // Check if there's data available in the FIFO buffer
+  while (mpu.getFIFOCount() >= packetSize) {
+    mpu.getFIFOBytes(fifoBuffer, packetSize);
+
+    Quaternion q;
+    VectorFloat gravity;
+    float ypr[3];  // Array to hold yaw, pitch, and roll values
+    mpu.dmpGetQuaternion(&q, fifoBuffer);
+    mpu.dmpGetGravity(&gravity, &q);
+    mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+
+    // Convert roll to degrees and store in currentRoll
+    currentRoll = ypr[2] * 180.0 / PI;  // ypr[2] is the roll value
+  }
+}
+
+// Function to adjust motor based on current roll and print the status
+void adjustMotorToRollRange() {
+  float distanceToTarget;
+
+  if (currentRoll < TARGET_MIN_ROLL) {
+    distanceToTarget = TARGET_MIN_ROLL - currentRoll;
+    if (distanceToTarget <= SLOW_DOWN_RANGE) {
+      stepper.setSpeed(3);  // Slow down speed
+      stepper.step(0, 3);   // Small steps anticlockwise
+    } else {
+      stepper.setSpeed(2);  // Fast speed
+      stepper.step(0, 10);  // Larger steps anticlockwise
+    }
+    Serial.print("Roll: ");
+    Serial.print(currentRoll);
+    Serial.println(" (Clockwise)");
+  } else if (currentRoll > TARGET_MAX_ROLL) {
+    distanceToTarget = currentRoll - TARGET_MAX_ROLL;
+    if (distanceToTarget <= SLOW_DOWN_RANGE) {
+      stepper.setSpeed(3);  // Slow down speed
+      stepper.step(1, 3);   // Small steps clockwise
+    } else {
+      stepper.setSpeed(2);  // Fast speed
+      stepper.step(1, 10);  // Larger steps clockwise
+    }
+    Serial.print("Roll: ");
+    Serial.print(currentRoll);
+    Serial.println(" (Anticlockwise)");
+  } else {
+    // Stop motor if roll is within the target range
+    Serial.print("Roll: ");
+    Serial.print(currentRoll);
+    Serial.println(" (Stop)");
+  }
+}
+
+void loop() {
+  // Continuously update roll
+  readRoll();
+
+  // Adjust motor only if necessary based on roll
+  adjustMotorToRollRange();
+
+  delay(50);  // Small delay to allow for stable reading
+}
+
+
+
+*********************************
+similar code to up , just slow and small steps when come close 
+
+
+#include <Wire.h>
+#include <MPU6050_6Axis_MotionApps20.h>
+#include "Bonezegei_ULN2003_Stepper.h"
+
+// Motor Pins
+#define IN1 8
+#define IN2 9
+#define IN3 10
+#define IN4 11
+
+// Target Roll Range
+#define TARGET_MIN_ROLL 0.0     // Minimum acceptable roll value
+#define TARGET_MAX_ROLL 1.0    // Maximum acceptable roll value
+#define SLOW_DOWN_RANGE 5.0     // Slow down within ±5 degrees of the target
+
+// Initialize the stepper motor and MPU
+Bonezegei_ULN2003_Stepper stepper(IN1, IN2, IN3, IN4);
+MPU6050 mpu;
+
+// Global variables
+bool dmpReady = false;
+uint8_t devStatus;
+uint16_t packetSize;
+uint8_t fifoBuffer[64];
+float currentRoll = 0.0;
+
+// Initialize MPU and Stepper
+void setup() {
+  Serial.begin(115200);
+  Wire.begin();
+
+  // MPU setup
+  mpu.initialize();
+  devStatus = mpu.dmpInitialize();
+  if (devStatus == 0) {
+    mpu.setDMPEnabled(true);
+    dmpReady = true;
+    packetSize = mpu.dmpGetFIFOPacketSize();
+    Serial.println("DMP initialized successfully");
+  } else {
+    Serial.print("DMP initialization failed with code ");
+    Serial.println(devStatus);
+  }
+
+  // Stepper Motor setup
+  stepper.begin();
+  stepper.setSpeed(2);  // Initial fast speed
+}
+
+// Read roll continuously to keep it stable
+void readRoll() {
+  if (!dmpReady) return;
+
+  // Check if there's data available in the FIFO buffer
+  while (mpu.getFIFOCount() >= packetSize) {
+    mpu.getFIFOBytes(fifoBuffer, packetSize);
+
+    Quaternion q;
+    VectorFloat gravity;
+    float ypr[3];  // Array to hold yaw, pitch, and roll values
+    mpu.dmpGetQuaternion(&q, fifoBuffer);
+    mpu.dmpGetGravity(&gravity, &q);
+    mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+
+    // Convert roll to degrees and store in currentRoll
+    currentRoll = ypr[2] * 180.0 / PI;  // ypr[2] is the roll value
+  }
+}
+
+// Function to adjust motor based on current roll and print the status
+void adjustMotorToRollRange() {
+  float distanceToTarget;
+
+  if (currentRoll < TARGET_MIN_ROLL) {
+    distanceToTarget = TARGET_MIN_ROLL - currentRoll;
+    if (distanceToTarget <= SLOW_DOWN_RANGE) {
+      stepper.setSpeed(3);   // Slow down speed
+      stepper.step(0, 3);    // Small steps clockwise
+      delay(20);             // Additional delay for stability
+    } else {
+      stepper.setSpeed(2);   // Fast speed
+      stepper.step(0, 10);   // Larger steps clockwise
+      delay(5);              // Minimal delay at higher speed
+    }
+    Serial.print("Roll: ");
+    Serial.print(currentRoll);
+    Serial.println(" (Clockwise)");
+  } else if (currentRoll > TARGET_MAX_ROLL) {
+    distanceToTarget = currentRoll - TARGET_MAX_ROLL;
+    if (distanceToTarget <= SLOW_DOWN_RANGE) {
+      stepper.setSpeed(3);   // Slow down speed
+      stepper.step(1, 3);    // Small steps counterclockwise
+      delay(20);             // Additional delay for stability
+    } else {
+      stepper.setSpeed(2);   // Fast speed
+      stepper.step(1, 10);   // Larger steps counterclockwise
+      delay(5);              // Minimal delay at higher speed
+    }
+    Serial.print("Roll: ");
+    Serial.print(currentRoll);
+    Serial.println(" (Anticlockwise)");
+  } else {
+    // Stop motor if roll is within the target range
+    Serial.print("Roll: ");
+    Serial.print(currentRoll);
+    Serial.println(" (Stop)");
+  }
+}
+
+void loop() {
+  // Continuously update roll
+  readRoll();
+
+  // Adjust motor only if necessary based on roll
+  adjustMotorToRollRange();
+}
+
+
+*********************************
+
+nice accelmotor code 
+
+#include <Wire.h>
+#include <MPU6050_6Axis_MotionApps20.h>
+#include <AccelStepper.h>
+
+// Motor Pins for ULN2003 driver
+#define IN1 2
+#define IN2 3
+#define IN3 4
+#define IN4 5
+
+// Target Roll Range
+#define TARGET_MIN_ROLL 10.0  // Minimum acceptable roll value
+#define TARGET_MAX_ROLL 20.0  // Maximum acceptable roll value
+
+// Initialize stepper motor and MPU
+AccelStepper stepper(AccelStepper::FULL4WIRE, IN1, IN3, IN2, IN4);
+MPU6050 mpu;
+
+// Global variables
+bool dmpReady = false;
+uint8_t devStatus;
+uint16_t packetSize;
+uint8_t fifoBuffer[64];
+float currentRoll = 0.0;
+
+// Initialize MPU and Stepper
+void setup() {
+  Serial.begin(115200);
+  Wire.begin();
+
+  // MPU setup
+  mpu.initialize();
+  devStatus = mpu.dmpInitialize();
+  if (devStatus == 0) {
+    mpu.setDMPEnabled(true);
+    dmpReady = true;
+    packetSize = mpu.dmpGetFIFOPacketSize();
+    Serial.println("DMP initialized successfully");
+  } else {
+    Serial.print("DMP initialization failed with code ");
+    Serial.println(devStatus);
+  }
+
+  // Stepper motor setup
+  stepper.setMaxSpeed(1000); // Set maximum motor speed
+  stepper.setSpeed(400);     // Set initial motor speed
+}
+
+// Function to read roll from MPU6050
+void readRoll() {
+  if (!dmpReady) return;
+
+  // Check if there's data available in the FIFO buffer
+  while (mpu.getFIFOCount() >= packetSize) {
+    mpu.getFIFOBytes(fifoBuffer, packetSize);
+
+    Quaternion q;
+    VectorFloat gravity;
+    float ypr[3];  // Array to hold yaw, pitch, and roll values
+    mpu.dmpGetQuaternion(&q, fifoBuffer);
+    mpu.dmpGetGravity(&gravity, &q);
+    mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+
+    // Convert roll to degrees
+    currentRoll = ypr[2] * 180.0 / PI;  // ypr[2] is the roll value
+  }
+}
+
+// Function to adjust motor movement based on roll
+void adjustMotorToRollRange() {
+  if (currentRoll < TARGET_MIN_ROLL) {
+    // Rotate clockwise to correct roll
+    stepper.setSpeed(400); // Forward direction (positive speed)
+    stepper.runSpeed();
+    Serial.print("Roll: ");
+    Serial.print(currentRoll);
+    Serial.println(" (Clockwise)");
+  } else if (currentRoll > TARGET_MAX_ROLL) {
+    // Rotate counterclockwise to correct roll
+    stepper.setSpeed(-400); // Reverse direction (negative speed)
+    stepper.runSpeed();
+    Serial.print("Roll: ");
+    Serial.print(currentRoll);
+    Serial.println(" (Counterclockwise)");
+  } else {
+    // Stop motor if roll is within target range
+    Serial.print("Roll: ");
+    Serial.print(currentRoll);
+    Serial.println(" (Stop)");
+  }
+}
+
+// Main loop
+void loop() {
+  // Continuously read roll from MPU
+  readRoll();
+
+  // Adjust motor movement based on roll
+  adjustMotorToRollRange();
+
+}
+
+
+
+***********************
+
+
+accelmotor library code with range value so that move slow within range . 
+
+accuracy of +-0.1 , which means range of 0.2 deg minimum . no less than this since 1 step is 0.176 
+
+wow we achieved 1 step movement accuracy . 
+
+do this same concept with yaw also after sensor fusion . (many things will change - sensor , getting values , but the main concept how you use the rpy value to move the motor . 
+
+#include <Wire.h>
+#include <MPU6050_6Axis_MotionApps20.h>
+#include <AccelStepper.h>
+
+// Motor Pins for ULN2003 driver
+#define IN1 2
+#define IN2 3
+#define IN3 4
+#define IN4 5
+
+// Target Roll Range
+#define TARGET_MIN_ROLL 0.0  // Minimum acceptable roll value
+#define TARGET_MAX_ROLL 0.2 // Maximum acceptable roll value
+
+//accuracy of +-0.1 , which means range of 0.2 min . no less than this since 1 step is 0.176 
+
+// Speed Adjustment Variables
+#define NORMAL_SPEED 400        // Normal speed when roll is far from target range
+#define FIRST_SLOW_RANGE 5.0   // Range for slower speed (20 degrees)
+#define FIRST_SLOW_RANGE_VAL 10 // Speed value for first slow range
+#define SECOND_SLOW_RANGE 1.0  // Range for very slow speed (10 degrees)
+#define SECOND_SLOW_RANGE_VAL 1 // Speed value for second slow range
+
+// Initialize stepper motor and MPU
+AccelStepper stepper(AccelStepper::FULL4WIRE, IN1, IN3, IN2, IN4);
+MPU6050 mpu;
+
+// Global variables
+bool dmpReady = false;
+uint8_t devStatus;
+uint16_t packetSize;
+uint8_t fifoBuffer[64];
+float currentRoll = 0.0;
+
+// Initialize MPU and Stepper
+void setup() {
+  Serial.begin(115200);
+  Wire.begin();
+
+  // MPU setup
+  mpu.initialize();
+  devStatus = mpu.dmpInitialize();
+  if (devStatus == 0) {
+    mpu.setDMPEnabled(true);
+    dmpReady = true;
+    packetSize = mpu.dmpGetFIFOPacketSize();
+    Serial.println("DMP initialized successfully");
+  } else {
+    Serial.print("DMP initialization failed with code ");
+    Serial.println(devStatus);
+  }
+
+  // Stepper motor setup
+  stepper.setMaxSpeed(1000); // Set maximum motor speed
+  stepper.setSpeed(NORMAL_SPEED);     // Set initial motor speed
+}
+
+// Function to read roll from MPU6050
+void readRoll() {
+  if (!dmpReady) return;
+
+  // Check if there's data available in the FIFO buffer
+  while (mpu.getFIFOCount() >= packetSize) {
+    mpu.getFIFOBytes(fifoBuffer, packetSize);
+
+    Quaternion q;
+    VectorFloat gravity;
+    float ypr[3];  // Array to hold yaw, pitch, and roll values
+    mpu.dmpGetQuaternion(&q, fifoBuffer);
+    mpu.dmpGetGravity(&gravity, &q);
+    mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+
+    // Convert roll to degrees
+    currentRoll = ypr[2] * 180.0 / PI;  // ypr[2] is the roll value
+  }
+}
+
+// Function to adjust motor direction and speed based on roll
+void adjustMotorToRollRange() {
+  if (currentRoll < TARGET_MIN_ROLL - FIRST_SLOW_RANGE || currentRoll > TARGET_MAX_ROLL + FIRST_SLOW_RANGE) {
+    // Roll is far from target range, normal speed (400)
+    stepper.setSpeed(currentRoll < TARGET_MIN_ROLL ? -NORMAL_SPEED : NORMAL_SPEED); // Normal speed
+    Serial.print("Roll: ");
+    Serial.print(currentRoll);
+    Serial.println(" (Normal Speed)");
+  } else if (((currentRoll >= (TARGET_MIN_ROLL - FIRST_SLOW_RANGE)) && (currentRoll < (TARGET_MIN_ROLL - SECOND_SLOW_RANGE))) ||
+             ((currentRoll > (TARGET_MAX_ROLL + SECOND_SLOW_RANGE)) && (currentRoll <= (TARGET_MAX_ROLL + FIRST_SLOW_RANGE)))) {
+    // Roll is closer to target range, medium speed (10)
+    stepper.setSpeed(currentRoll < TARGET_MIN_ROLL ? -FIRST_SLOW_RANGE_VAL : FIRST_SLOW_RANGE_VAL); // Medium speed
+    Serial.print("Roll: ");
+    Serial.print(currentRoll);
+    Serial.println(" (Medium Speed)");
+  } else if (((currentRoll >= (TARGET_MIN_ROLL - SECOND_SLOW_RANGE)) && (currentRoll <= TARGET_MIN_ROLL))  ||
+             ((currentRoll <= (TARGET_MAX_ROLL + SECOND_SLOW_RANGE)) && (currentRoll >= TARGET_MAX_ROLL))) {
+    // Roll is very close to the target range, very slow speed (1)
+    stepper.setSpeed(currentRoll < TARGET_MIN_ROLL ? -SECOND_SLOW_RANGE_VAL : SECOND_SLOW_RANGE_VAL); // Very slow speed
+    Serial.print("Roll: ");
+    Serial.print(currentRoll);
+    Serial.println(" (Very Slow Speed)");
+  } else {
+    // Roll is within target range, stop motor
+    stepper.setSpeed(0); // Stop
+    Serial.print("Roll: ");
+    Serial.print(currentRoll);
+    Serial.println(" (Stop)");
+  }
+    stepper.runSpeed();
+}
+
+// Main loop
+void loop() {
+  // Continuously read roll from MPU
+  readRoll();
+
+  // Adjust motor movement based on roll
+  adjustMotorToRollRange();
+
+  // Run the motor at the determined speed
+
+}
+
+
+********************************
+
+
+
+ism + mmc ( smartelex guide code )
+
+#include <Wire.h>
+#include "SparkFun_ISM330DHCX.h"
+SparkFun_ISM330DHCX myISM;
+// Structs for X,Y,Z data
+sfe_ism_data_t accelData;
+sfe_ism_data_t gyroData; 
+void setup(){
+ Wire.begin();
+ Serial.begin(115200);
+ if( !myISM.begin() ){
+ Serial.println("Did not begin.");
+ while(1); }
+ // Reset the device to default settings. This if helpful is you're doing multiple
+ // uploads testing different settings.
+ myISM.deviceReset();
+ // Wait for it to finish reseting
+ while( !myISM.getDeviceReset() ){
+ delay(1);
+ }
+ Serial.println("Reset.");
+ Serial.println("Applying settings.");
+ delay(100);
+ myISM.setDeviceConfig();
+ myISM.setBlockDataUpdate();
+ // Set the output data rate and precision of the accelerometer
+ myISM.setAccelDataRate(ISM_XL_ODR_104Hz);
+ myISM.setAccelFullScale(ISM_4g);
+ // Set the output data rate and precision of the gyroscope
+ myISM.setGyroDataRate(ISM_GY_ODR_104Hz);
+ myISM.setGyroFullScale(ISM_500dps);
+ // Turn on the accelerometer's filter and apply settings.
+ myISM.setAccelFilterLP2();
+ myISM.setAccelSlopeFilter(ISM_LP_ODR_DIV_100);
+ // Turn on the gyroscope's filter and apply settings.
+ myISM.setGyroFilterLP1();
+ myISM.setGyroLP1Bandwidth(ISM_MEDIUM);
+}
+void loop(){
+ // Check if both gyroscope and accelerometer data is available
+  if( myISM.checkStatus() ){
+ myISM.getAccel(&accelData);
+ myISM.getGyro(&gyroData);
+ Serial.print("Accelerometer: ");
+ Serial.print("X: ");
+ Serial.print(accelData.xData);
+ Serial.print(" ");
+ Serial.print("Y: ");
+ Serial.print(accelData.yData);
+ Serial.print(" ");
+ Serial.print("Z: ");
+ Serial.print(accelData.zData);
+ Serial.println(" ");
+ Serial.print("Gyroscope: ");
+ Serial.print("X: ");
+ Serial.print(gyroData.xData);
+ Serial.print(" ");
+ Serial.print("Y: ");
+ Serial.print(gyroData.yData);
+ Serial.print(" ");
+ Serial.print("Z: ");
+ Serial.print(gyroData.zData);
+ Serial.println(" ");
+ }
+ delay(100);
+}
+
+
+
+
+
+#include <Wire.h>
+#include <SparkFun_MMC5983MA_Arduino_Library.h>
+
+SFE_MMC5983MA myMag;
+
+void setup()
+{
+ Serial.begin(115200);
+ Serial.println("MMC5983MA Example");
+ Wire.begin();
+ if (myMag.begin() == false)
+ {
+ Serial.println("MMC5983MA did not respond - check your wiring. Freezing.");
+ while (true) ;
+ }
+ myMag.softReset();
+ Serial.println("MMC5983MA connected");
+ int celsius = myMag.getTemperature();
+ float fahrenheit = (celsius * 9.0f / 5.0f) + 32.0f;
+ Serial.print("Die temperature: ");
+ Serial.print(celsius);
+ Serial.print("°C or ");
+ Serial.print(fahrenheit, 0);
+ Serial.println("°F.");
+}
+void loop()
+{
+ uint32_t currentX = 0;
+ uint32_t currentY = 0;
+ uint32_t currentZ = 0;
+ double scaledX = 0;
+ double scaledY = 0;
+ double scaledZ = 0;
+ // This reads the X, Y and Z channels consecutively
+ // (Useful if you have one or more channels disabled)
+ currentX = myMag.getMeasurementX();
+ currentY = myMag.getMeasurementY();
+ currentZ = myMag.getMeasurementZ();
+ // Or, we could read all three simultaneously
+ //myMag.getMeasurementXYZ(&currentX, &currentY, &currentZ);
+ Serial.print("X axis raw value: ");
+ Serial.print(currentX);
+ Serial.print("\tY axis raw value: ");
+ Serial.print(currentY);
+ Serial.print("\tZ axis raw value: ");
+ Serial.println(currentZ);
+ // The magnetic field values are 18-bit unsigned. The _approximate_ zero (mid) point is 2^17 (131072).
+ // Here we scale each field to +/- 1.0 to make it easier to convert to Gauss.
+ //
+ // Please note: to properly correct and calibrate the X, Y and Z channels, you need to determine true
+ // offsets (zero points) and scale factors (gains) for all three channels. Futher details can be found at:
+ // https://thecavepearlproject.org/2015/05/22/calibrating-any-compass-or-accelerometer-for-arduino/
+ scaledX = (double)currentX - 131072.0;
+ scaledX /= 131072.0;
+ scaledY = (double)currentY - 131072.0;
+ scaledY /= 131072.0;
+ scaledZ = (double)currentZ - 131072.0;
+ scaledZ /= 131072.0;
+ // The magnetometer full scale is +/- 8 Gauss
+ // Multiply the scaled values by 8 to convert to Gauss
+ Serial.print("X axis field (Gauss): ");
+ Serial.print(scaledX * 8, 5); // Print with 5 decimal places
+ Serial.print("\tY axis field (Gauss): ");
+ Serial.print(scaledY * 8, 5);
+ Serial.print("\tZ axis field (Gauss): ");
+ Serial.println(scaledZ * 8, 5);
+ Serial.println();
+ delay(100);
+} 
+
+***************************************************
+
+magnetometer code  
+(0 to 360 , 1 floating value good , 0->360 transition takes 2,3 second to transition)
+
+
+#include <Wire.h>
+#include <SparkFun_MMC5983MA_Arduino_Library.h>
+#include <math.h>
+
+SFE_MMC5983MA myMag;
+
+// Magneto Calibration Parameters
+double A[3][3] = {
+  {0.007122, 0.000024, 0.000008},
+  {0.000024, 0.007495, 0.000535},
+  {0.000008, 0.000535, 0.007711}};
+double b[3] = {130661.007228, 136433.190447, 132399.593881};
+
+// Averaging Parameters
+const int numSamples = 10;  // Number of samples for averaging
+double yawSum = 0;          // Sum of yaw values
+int sampleCount = 0;        // Current sample count
+
+void setup() {
+  Serial.begin(115200);
+
+  if (!myMag.begin()) {
+    Serial.println("Error initializing MMC5983MA sensor. Check connections.");
+    while (1);
+  }
+  Serial.println("Magnetometer Initialized.");
+  delay(500);
+}
+
+void loop() {
+  // Read raw magnetometer values
+  double magX = myMag.getMeasurementX();
+  double magY = myMag.getMeasurementY();
+  double magZ = myMag.getMeasurementZ();
+
+  // Apply calibration
+  double calibX = (A[0][0] * (magX - b[0])) + (A[0][1] * (magY - b[1])) + (A[0][2] * (magZ - b[2]));
+  double calibY = (A[1][0] * (magX - b[0])) + (A[1][1] * (magY - b[1])) + (A[1][2] * (magZ - b[2]));
+  double calibZ = (A[2][0] * (magX - b[0])) + (A[2][1] * (magY - b[1])) + (A[2][2] * (magZ - b[2]));
+
+  // Calculate yaw
+  double yaw = atan2(calibY, calibX) * 180.0 / PI;
+  if (yaw < 0) yaw += 360.0;  // Normalize to 0-360 degrees
+  if (yaw >= 360) yaw -= 360.0;  // Handle overflow
+
+  // Update moving average
+  if (sampleCount < numSamples) {
+    yawSum += yaw;
+    sampleCount++;
+  } else {
+    yawSum -= yawSum / numSamples;  // Remove the oldest sample
+    yawSum += yaw;                  // Add the newest sample
+  }
+
+  // Calculate the averaged yaw
+  double averagedYaw = yawSum / sampleCount;
+
+  // Output the averaged yaw
+  Serial.print("Averaged Yaw: ");
+  Serial.println(averagedYaw, 5);  // Print with 5 decimal places
+
+  delay(50);  // Faster update rate
+}
+
+
+**************************************************
+
+same as above , 0 to 180 , -180 to -0 . , transistion takes 2 second . 
+
+#include <Wire.h>
+#include <SparkFun_MMC5983MA_Arduino_Library.h>
+#include <math.h>
+
+SFE_MMC5983MA myMag;
+
+// Magneto Calibration Parameters
+double A[3][3] = {
+  {0.007122, 0.000024, 0.000008},
+  {0.000024, 0.007495, 0.000535},
+  {0.000008, 0.000535, 0.007711}};
+double b[3] = {130661.007228, 136433.190447, 132399.593881};
+
+// Averaging Parameters
+const int numSamples = 10;  // Number of samples for averaging
+double yawSum = 0;          // Sum of yaw values
+int sampleCount = 0;        // Current sample count
+
+void setup() {
+  Serial.begin(115200);
+
+  if (!myMag.begin()) {
+    Serial.println("Error initializing MMC5983MA sensor. Check connections.");
+    while (1);
+  }
+  Serial.println("Magnetometer Initialized.");
+  delay(500);
+}
+
+void loop() {
+  // Read raw magnetometer values
+  double magX = myMag.getMeasurementX();
+  double magY = myMag.getMeasurementY();
+  double magZ = myMag.getMeasurementZ();
+
+  // Apply calibration
+  double calibX = (A[0][0] * (magX - b[0])) + (A[0][1] * (magY - b[1])) + (A[0][2] * (magZ - b[2]));
+  double calibY = (A[1][0] * (magX - b[0])) + (A[1][1] * (magY - b[1])) + (A[1][2] * (magZ - b[2]));
+  double calibZ = (A[2][0] * (magX - b[0])) + (A[2][1] * (magY - b[1])) + (A[2][2] * (magZ - b[2]));
+
+  // Calculate yaw
+  double yaw = atan2(calibY, calibX) * 180.0 / PI;
+  //if (yaw < 0) yaw += 360.0;  // Normalize to 0-360 degrees
+  //if (yaw >= 360) yaw -= 360.0;  // Handle overflow
+
+  // Update moving average
+  if (sampleCount < numSamples) {
+    yawSum += yaw;
+    sampleCount++;
+  } else {
+    yawSum -= yawSum / numSamples;  // Remove the oldest sample
+    yawSum += yaw;                  // Add the newest sample
+  }
+
+  // Calculate the averaged yaw
+  double averagedYaw = yawSum / sampleCount;
+
+  // Output the averaged yaw
+  Serial.print("Averaged Yaw: ");
+  Serial.println(averagedYaw, 5);  // Print with 5 decimal places
+
+  delay(50);  // Faster update rate
+}
+
+**************************************************
+
+atan_ka_jalwa 
+
+but drift hai ->  +.1 every 2,3 second . (so sensor fusion is better )
+
+#include <Wire.h>
+#include <SparkFun_MMC5983MA_Arduino_Library.h>
+#include <math.h>
+
+SFE_MMC5983MA myMag;
+
+// Magneto Calibration Parameters
+double A[3][3] = {
+  {0.007122, 0.000024, 0.000008},
+  {0.000024, 0.007495, 0.000535},
+  {0.000008, 0.000535, 0.007711}};
+double b[3] = {130661.007228, 136433.190447, 132399.593881};
+
+// Averaging Parameters
+const int numSamples = 50;  // Increased samples for better stability
+double yawSum = 0;          // Sum of yaw values
+int sampleCount = 0;        // Current sample count
+double lastYaw = 0;         // For low-pass filter
+
+void setup() {
+  Serial.begin(115200);
+
+  if (!myMag.begin()) {
+    Serial.println("Error initializing MMC5983MA sensor. Check connections.");
+    while (1);
+  }
+  Serial.println("Magnetometer Initialized.");
+  delay(500);
+}
+
+void loop() {
+  // Read raw magnetometer values
+  double magX = myMag.getMeasurementX();
+  double magY = myMag.getMeasurementY();
+  double magZ = myMag.getMeasurementZ();
+
+  // Apply calibration
+  double calibX = (A[0][0] * (magX - b[0])) + (A[0][1] * (magY - b[1])) + (A[0][2] * (magZ - b[2]));
+  double calibY = (A[1][0] * (magX - b[0])) + (A[1][1] * (magY - b[1])) + (A[1][2] * (magZ - b[2]));
+  double calibZ = (A[2][0] * (magX - b[0])) + (A[2][1] * (magY - b[1])) + (A[2][2] * (magZ - b[2]));
+
+  // Calculate yaw
+  double yaw = atan2(calibY, calibX) * 180.0 / PI;
+  if (yaw < 0) yaw += 360.0;  // Normalize to 0-360 degrees
+
+  // Update moving average
+  if (sampleCount < numSamples) {
+    yawSum += yaw;
+    sampleCount++;
+  } else {
+    yawSum -= yawSum / numSamples;  // Remove the oldest sample
+    yawSum += yaw;                  // Add the newest sample
+  }
+
+  // Low-pass filter for smoother yaw
+  double filteredYaw = lastYaw * 0.8 + yaw * 0.2;  // Adjust filter strength with 0.1
+  lastYaw = filteredYaw;
+
+  // Calculate the averaged yaw
+  double averagedYaw = yawSum / sampleCount;
+
+  // Output the averaged and filtered yaw
+  Serial.print("Averaged Yaw: ");
+  Serial.println(filteredYaw, 3);  // Print with 3 decimal places
+
+  delay(10);  // Faster update rate
+}
+
+***********************************************
+#include <Wire.h>
+#include <SparkFun_MMC5983MA_Arduino_Library.h>
+#include <math.h>
+
+SFE_MMC5983MA myMag;
+
+// Magneto Calibration Parameters
+double A[3][3] = {
+  {0.007122, 0.000024, 0.000008},
+  {0.000024, 0.007495, 0.000535},
+  {0.000008, 0.000535, 0.007711}};
+double b[3] = {130661.007228, 136433.190447, 132399.593881};
+
+// Averaging Parameters
+const int numSamples = 50;  // Increased samples for better stability
+double yawSum = 0;          // Sum of yaw values
+int sampleCount = 0;        // Current sample count
+double lastYaw = 0;         // For low-pass filter
+
+void setup() {
+  Serial.begin(115200);
+
+  if (!myMag.begin()) {
+    Serial.println("Error initializing MMC5983MA sensor. Check connections.");
+    while (1);
+  }
+  Serial.println("Magnetometer Initialized.");
+  delay(500);
+}
+
+void loop() {
+  // Read raw magnetometer values
+  double magX = myMag.getMeasurementX();
+  double magY = myMag.getMeasurementY();
+  double magZ = myMag.getMeasurementZ();
+
+  // Apply calibration
+  double calibX = (A[0][0] * (magX - b[0])) + (A[0][1] * (magY - b[1])) + (A[0][2] * (magZ - b[2]));
+  double calibY = (A[1][0] * (magX - b[0])) + (A[1][1] * (magY - b[1])) + (A[1][2] * (magZ - b[2]));
+  double calibZ = (A[2][0] * (magX - b[0])) + (A[2][1] * (magY - b[1])) + (A[2][2] * (magZ - b[2]));
+
+  // Calculate yaw
+  double yaw = atan2(calibY, calibX) * 180.0 / PI;
+  if (yaw < 0) yaw += 360.0;  // Normalize to 0-360 degrees
+
+  // Update moving average
+  if (sampleCount < numSamples) {
+    yawSum += yaw;
+    sampleCount++;
+  } else {
+    yawSum -= yawSum / numSamples;  // Remove the oldest sample
+    yawSum += yaw;                  // Add the newest sample
+  }
+
+  // Low-pass filter for smoother yaw
+  double filteredYaw = lastYaw * 0.8 + yaw * 0.2;  // Adjust filter strength with 0.1
+  lastYaw = filteredYaw;
+
+  // Calculate the averaged yaw
+  double averagedYaw = yawSum / sampleCount;
+
+  // Output the averaged and filtered yaw
+  Serial.print("Averaged Yaw: ");
+  Serial.println(filteredYaw, 3);  // Print with 3 decimal places
+
+  delay(10);  // Faster update rate
+}
+******************************************8
+
+#include <Wire.h>
+#include <SparkFun_MMC5983MA_Arduino_Library.h>
+#include <math.h>
+
+SFE_MMC5983MA myMag;
+
+// Magneto Calibration Parameters
+double A[3][3] = {
+  {0.007122, 0.000024, 0.000008},
+  {0.000024, 0.007495, 0.000535},
+  {0.000008, 0.000535, 0.007711}};
+double b[3] = {130661.007228, 136433.190447, 132399.593881};
+
+// Averaging Parameters
+const int numSamples = 50;  // Number of samples for moving average
+double yawSum = 0.0;        // Sum of yaw values
+int sampleCount = 0;        // Current sample count
+double lastYaw = 0.0;       // Last yaw value for low-pass filtering
+
+void setup() {
+  Serial.begin(115200);
+
+  if (!myMag.begin()) {
+    Serial.println("Error initializing MMC5983MA sensor. Check connections.");
+    while (1);
+  }
+  Serial.println("Magnetometer Initialized.");
+  delay(500);
+}
+
+void loop() {
+  // Read raw magnetometer values
+  double magX = static_cast<double>(myMag.getMeasurementX());
+  double magY = static_cast<double>(myMag.getMeasurementY());
+  double magZ = static_cast<double>(myMag.getMeasurementZ());
+
+  // Apply calibration
+  double calibX = (A[0][0] * (magX - b[0])) + (A[0][1] * (magY - b[1])) + (A[0][2] * (magZ - b[2]));
+  double calibY = (A[1][0] * (magX - b[0])) + (A[1][1] * (magY - b[1])) + (A[1][2] * (magZ - b[2]));
+  double calibZ = (A[2][0] * (magX - b[0])) + (A[2][1] * (magY - b[1])) + (A[2][2] * (magZ - b[2]));
+
+  // Calculate yaw
+  double yaw = atan2(calibY, calibX) * 180.0 / PI;
+  if (yaw < 0.0) yaw += 360.0;  // Normalize to 0-360 degrees
+
+  // Update moving average
+  if (sampleCount < numSamples) {
+    yawSum += yaw;
+    sampleCount++;
+  } else {
+    yawSum -= yawSum / numSamples;  // Remove the oldest sample
+    yawSum += yaw;                  // Add the newest sample
+  }
+
+  // Calculate the averaged yaw
+  double averagedYaw = yawSum / sampleCount;
+
+  // Low-pass filter for smoother yaw
+  double filteredYaw = lastYaw * 0.8 + yaw * 0.2;  // Filter strength: 0.8 for previous, 0.2 for current
+  lastYaw = filteredYaw;
+
+  // Output the averaged and filtered yaw
+  Serial.print("Filtered Yaw: ");
+  Serial.print(filteredYaw, 3);  // Print filtered yaw with 3 decimal places
+  Serial.print(" | Averaged Yaw: ");
+  Serial.println(averagedYaw, 3);  // Print averaged yaw with 3 decimal places
+
+  delay(10);  // Faster update rate (100 Hz)
+}
+
+***********************************************************
+
+
+
+
+

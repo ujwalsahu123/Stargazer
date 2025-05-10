@@ -1,0 +1,286 @@
+#using stellarium gui , you can point that star , voice info about it , voice chat .
+
+################ updates ##########################
+
+#can work on text to speech and speech to text 
+
+# the ai thing is not that good . and dosent give nice answers. check it out , and also its argument . when 
+# sending the prompt .
+
+#( later updates )
+# when we fetch stellarium data of stars etc , then its like hip235  ,and if we dont 
+# have info of it in our celestial_info.txt then it send to ai and ai dosent understands hip244,
+# it understands sirius , rigal , etc name . so either we can have info of all the stars , objects . or
+# we will have to convert scientif name to noraml name or fetch normal name .  
+
+import requests
+from astropy.coordinates import SkyCoord, AltAz, EarthLocation
+from astropy.time import Time
+from astropy import units as u
+from astroquery.vizier import Vizier
+from skyfield.api import Loader, Topos, load
+import time
+import serial   # For Serial communication with Arduino
+import keyboard # For capturing key press
+import pyttsx3  # Offline text-to-speech library
+import os
+import speech_recognition as sr  # For Voice Recognition
+import json
+
+
+# Stellarium settings
+STELLARIUM_HOST = 'localhost'
+STELLARIUM_PORT = 8090
+
+# Observer's Location
+latitude = 19.27425   # Example: Mumbai
+longitude = 72.88117
+elevation = 0        # Approx elevation in meters
+
+# List of Solar System objects for Skyfield
+solar_system_objects = ['sun', 'moon', 'mercury', 'venus', 'mars', 
+                        'jupiter', 'saturn', 'uranus', 'neptune', 'pluto']
+
+
+
+# Establish Serial connection to Arduino
+#arduino = serial.Serial('COM5', 9600, timeout=1)  # Change 'COM3' to your Arduino's port
+#time.sleep(2)  # Give some time to establish the connection
+
+# To keep track of the selected object
+current_object = None
+
+engine = pyttsx3.init()
+engine.setProperty('rate', 140)  # Speed of speech
+engine.setProperty('volume', 1)  # Volume (0.0 to 1.0)
+
+
+# Function to get selected object from Stellarium
+def get_selected_object():
+    url = f"http://{STELLARIUM_HOST}:{STELLARIUM_PORT}/api/objects/info"
+    params = {
+        'format': 'json',
+        'lang': 'en'
+    }
+    response = requests.get(url, params=params)
+    if response.status_code == 200:
+        data = response.json()
+        if data.get('found'):
+            name = data.get('name', '').lower()
+            return name
+    return None
+
+# Function to calculate Alt-Az for Solar System objects using Skyfield
+def calculate_solar_system_alt_az(name):
+    load_skyfield = Loader('./skyfield-data')
+    planets = load('./skyfield-data/de440s.bsp')
+    earth = planets['earth']
+    
+    # Mapping for Solar System objects
+    solar_system_map = {
+        'sun': 10,
+        'moon': 301,
+        'mercury': 199,
+        'venus': 299,
+        'earth': 399,
+        'mars': 4,
+        'jupiter': 5,
+        'saturn': 6,
+        'uranus': 7,
+        'neptune': 8,
+        'pluto': 9
+    }
+    
+    name = name.lower()
+    
+    # Check if the object is in the solar system map
+    if name in solar_system_map:
+        obj = planets[solar_system_map[name]]
+    else:
+        obj = planets[name]  # Use name directly for other objects
+
+    ts = load_skyfield.timescale()
+    t = ts.now()
+    
+    location = Topos(latitude_degrees=latitude, longitude_degrees=longitude, elevation_m=elevation)
+    astrometric = (earth + location).at(t).observe(obj)
+    alt, az, _ = astrometric.apparent().altaz()
+    
+    print(f"{name} Altitude: {alt.degrees:.6f}°, Azimuth: {az.degrees:.6f}°")
+    return alt.degrees, az.degrees
+
+# Function to fetch RA/Dec from Gaia or Hipparcos catalog using Astropy & Astroquery
+def get_ra_dec_from_catalog(name):
+    vizier = Vizier(columns=['RA_ICRS', 'DE_ICRS'])
+    vizier.ROW_LIMIT = 1
+    
+    # Search in Gaia catalog first
+    result = vizier.query_object(name, catalog='I/345/gaia2')
+    if result:
+        ra = result[0]['RA_ICRS'][0]
+        dec = result[0]['DE_ICRS'][0]
+        print(f"Gaia Catalog: RA: {ra}, Dec: {dec}", end=' ')
+        return ra, dec
+    
+    # If not found in Gaia, search in Hipparcos catalog
+    result = vizier.query_object(name, catalog='I/239/hip_main')
+    if result:
+        ra = result[0]['RA_ICRS'][0]
+        dec = result[0]['DE_ICRS'][0]
+        print(f"Hipparcos Catalog: RA: {ra}, Dec: {dec}", end=' ')
+        return ra, dec
+    
+    print("Object not found in Gaia or Hipparcos catalogs.")
+    return None, None
+
+# Function to calculate Alt-Az for Stars/Deep Sky Objects using Astropy
+def calculate_star_alt_az(ra, dec, name):
+    load_skyfield = Loader('./skyfield-data')
+    ts = load_skyfield.timescale()
+    t = ts.now()
+    time = Time(t.utc_iso())  # Convert Skyfield time to Astropy time format
+    location = EarthLocation(lat=latitude*u.deg, lon=longitude*u.deg, height=elevation*u.m)
+    sky_coord = SkyCoord(ra=ra*u.deg, dec=dec*u.deg, frame='icrs')
+    altaz = sky_coord.transform_to(AltAz(obstime=time, location=location))
+    
+    print(f"{name} Altitude: {altaz.alt.deg:.6f}°, Azimuth: {altaz.az.deg:.6f}°")
+    return altaz.alt.deg, altaz.az.deg
+
+
+
+def get_ai_response(query):
+    GEMINI_API_KEY = "AIzaSyClJjimPLzTtgNPpDMISGgpBQN-EV9_MuE"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    
+    headers = {"Content-Type": "application/json"}
+    data = {
+        "contents": [{
+            "parts": [{"text": query}]
+        }]
+    }
+
+    try:
+        response = requests.post(url, headers=headers, json=data)
+        response.raise_for_status()  # Raises an error for non-200 responses
+
+        result = response.json()
+        
+        # Extracting AI-generated text
+        if "candidates" in result and result["candidates"]:
+            return result["candidates"][0]["content"]["parts"][0]["text"]
+        else:
+            return "Error: No valid response received from Gemini API."
+
+    except requests.exceptions.RequestException as e:
+        return f"API Request Error: {e}"
+    except KeyError:
+        return "Error: Unexpected response structure."
+
+
+# Voice Recognition Function
+def recognize_speech():
+    recognizer = sr.Recognizer()
+    
+    with sr.Microphone() as source:
+        print("Listening... (Press Ctrl+C to stop)")
+        recognizer.adjust_for_ambient_noise(source)
+        
+        # Listen indefinitely until interrupted
+        try:
+            while True:
+                audio = recognizer.listen(source, timeout=None, phrase_time_limit=None)  # No timeout, listen indefinitely
+                print("Audio captured, processing...")
+                try:
+                    text = recognizer.recognize_google(audio)
+                    print(f"User said: {text}")
+                    return text  # Return the recognized text
+                except sr.UnknownValueError:
+                    print("Sorry, I did not understand that.")
+                except sr.RequestError:
+                    print("Could not request results. Check your internet connection.")
+                
+        except KeyboardInterrupt:
+            print("\nStopped listening.")
+            return None
+
+# Add this function to read celestial information from the local file
+def get_local_celestial_info(object_name):
+    try:
+        with open('./desktop-app/celestial_info.txt', 'r', encoding='utf-8') as file:
+            lines = file.readlines()
+            for line in lines:
+                # Check if the line starts with the object name followed by a colon
+                if line.lower().startswith(f"{object_name.lower()}:"):
+                    # Extract and return the information after the colon
+                    return line.split(":", 1)[1].strip()
+    except FileNotFoundError:
+        print("Local file 'celestial_info.txt' not found.")
+    return None
+
+# Modify the AI response function to first check the local file
+def get_info(object_name):
+    # Check the local file first
+    local_info = get_local_celestial_info(object_name)
+    if local_info:
+        print(f"Local Info: {local_info}")
+        return local_info
+    else:
+        # If not found locally, query the AI API
+        return get_ai_response(f"what is the name of this {object_name} celestial object .Tell me some interesting information about . tell me in 20 words without any symbols , bold ,*, etc ")
+
+
+
+# Main Loop
+while True:
+    # Get the selected object from Stellarium
+    name = get_selected_object()
+    if name and name != current_object:
+        current_object = name  # Update the tracked object
+        print(f"Tracking Object: {current_object}")
+    
+    # Check if 'p' is pressed
+    if keyboard.is_pressed('p'):
+        print("\nCalculating Alt-Az for:", current_object)
+        if current_object:
+            # Check if the object is a Solar System object
+            if current_object in solar_system_objects:
+                print("Using Skyfield for Solar System object.")
+                alt, az = calculate_solar_system_alt_az(current_object)
+            else:
+                ra, dec = get_ra_dec_from_catalog(current_object)
+                if ra and dec:
+                    print("Using Astropy for Star/Deep Sky Object.")
+                    alt, az = calculate_star_alt_az(float(ra), float(dec), current_object)
+                else:
+                    print("Object not found in catalogs.")
+                    continue
+            
+            # Send Alt-Az values to Arduino
+            # message = f"{alt:.4f},{az:.4f}\n"
+            # arduino.write(message.encode())
+            # print(f"Sent to Arduino: {message}")
+
+            # Get information about the object
+            object_info = get_info(current_object)
+            if object_info:
+                # Convert the response to speech
+                print(object_info)
+                engine.say(object_info)
+                engine.runAndWait()
+
+
+    # Check if 'q' is pressed to start voice recognition
+    if keyboard.is_pressed('q'):
+        print("Voice Recognition Activated.")
+        query = recognize_speech()
+        if query:
+            ai_response = get_ai_response(f"{query} , tell me in 20 words without any symbols , bold ,*, etc ")
+            if ai_response:
+                print(ai_response)
+                engine.say(ai_response)
+                engine.runAndWait()
+    
+    
+    # Adjusted sleep time for smoother operation
+    time.sleep(1)
+

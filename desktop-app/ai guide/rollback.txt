@@ -1,0 +1,278 @@
+##### here , it will take you to tonights jouney to the night sky .  it will show you one by one 
+#all the object that are above you in the night sky . with info, facts , theories , mysteries , science , etc .
+#and you can also interact with it using voice chat . 
+
+import requests
+from skyfield.api import Loader, Topos
+from astropy.time import Time
+from astropy.coordinates import SkyCoord, EarthLocation, AltAz
+from astropy import units as u
+from astroquery.vizier import Vizier
+import numpy as np
+import time
+import serial   # For Serial communication with Arduino
+import keyboard # For capturing key press
+import pyttsx3  # Offline text-to-speech library
+import os
+import speech_recognition as sr  # For Voice Recognition
+import json
+
+
+# Location (Mumbai, India)
+latitude = 19.27425   
+longitude = 72.88117
+elevation = 0    
+
+check_alt = 10   #alt > 10 
+
+# Lists of solar system objects and stars
+solar_system_objects = ['sun', 'moon', 'mercury', 'venus', 'mars', 
+                        'jupiter', 'saturn', 'uranus', 'neptune', 'pluto']
+
+stars = ['Sirius', 'Canopus', 'Alpha Centauri', 'Arcturus', 'Vega', 'Capella', 
+         'Rigel', 'Procyon', 'Achernar', 'Betelgeuse', 'Hadar', 'Altair', 
+         'Acrux', 'Aldebaran', 'Antares', 'Spica', 'Pollux', 'Fomalhaut', 
+         'Deneb', 'Mimosa', 'Regulus', 'Adhara', 'Shaula', 'Castor', 
+         'Gacrux', 'Bellatrix', 'Elnath', 'Miaplacidus', 'Alnilam', 
+         'Alnair', 'Alnitak', 'Regor', 'Kaus Australis', 'Avior', 'Sargas', 
+         'Menkalinan', 'Atria', 'Alhena', 'Peacock', 'Alsephina', 'Mirzam', 
+         'Polaris', 'Alphard', 'Hamal', 'Diphda', 'Mizar', 'Nunki', 
+         'Menkent', 'Alpheratz', 'Mirach']
+
+# Establish Serial connection to Arduino
+#arduino = serial.Serial('COM5', 9600, timeout=1)  # Change 'COM3' to your Arduino's port
+#time.sleep(2)  # Give some time to establish the connection
+
+engine = pyttsx3.init()
+engine.setProperty('rate', 140)  # Speed of speech
+engine.setProperty('volume', 1)  # Volume (0.0 to 1.0)
+
+
+# Function to calculate Alt-Az for Solar System objects using Skyfield
+def calculate_solar_system_alt_az(name):
+    load_skyfield = Loader('./skyfield-data')
+    planets = load_skyfield('de440s.bsp')
+    earth = planets['earth']
+    
+    # Mapping for Solar System objects
+    solar_system_map = {
+        'sun': 10,
+        'moon': 301,
+        'mercury': 199,
+        'venus': 299,
+        'earth': 399,
+        'mars': 4,
+        'jupiter': 5,
+        'saturn': 6,
+        'uranus': 7,
+        'neptune': 8,
+        'pluto': 9
+    }
+    
+    name = name.lower()
+    
+    if name in solar_system_map:
+        obj = planets[solar_system_map[name]]
+    else:
+        return None, None
+
+    ts = load_skyfield.timescale()
+    t = ts.now()
+    
+    location = Topos(latitude_degrees=latitude, longitude_degrees=longitude, elevation_m=elevation)
+    astrometric = (earth + location).at(t).observe(obj)
+    alt, az, _ = astrometric.apparent().altaz()
+    
+    return alt.degrees, az.degrees
+
+# Function to fetch RA/Dec using Astropy & Astroquery
+def get_ra_dec_from_catalog(name):
+    vizier = Vizier(columns=['RA_ICRS', 'DE_ICRS'])
+    vizier.ROW_LIMIT = 1
+    
+    # Search in Gaia catalog first
+    result = vizier.query_object(name, catalog='I/345/gaia2')
+    if result:
+        ra = result[0]['RA_ICRS'][0]
+        dec = result[0]['DE_ICRS'][0]
+        return ra, dec
+    
+    # If not found in Gaia, search in Hipparcos catalog
+    result = vizier.query_object(name, catalog='I/239/hip_main')
+    if result:
+        ra = result[0]['RA_ICRS'][0]
+        dec = result[0]['DE_ICRS'][0]
+        return ra, dec
+        
+    print("Object not found in Gaia or Hipparcos catalogs.")
+    return None, None
+
+# Function to calculate Alt-Az for Stars using Astropy
+def calculate_star_alt_az(ra, dec, name):
+    load_skyfield = Loader('./skyfield-data')
+    ts = load_skyfield.timescale()
+    t = ts.now()
+    time = Time(t.utc_iso())  # Convert Skyfield time to Astropy time format
+    location = EarthLocation(lat=latitude*u.deg, lon=longitude*u.deg, height=elevation*u.m)
+    sky_coord = SkyCoord(ra=ra*u.deg, dec=dec*u.deg, frame='icrs')
+    altaz = sky_coord.transform_to(AltAz(obstime=time, location=location))
+    return altaz.alt.deg, altaz.az.deg
+
+
+def get_ai_response(query):
+    GEMINI_API_KEY = "AIzaSyClJjimPLzTtgNPpDMISGgpBQN-EV9_MuE"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    
+    headers = {"Content-Type": "application/json"}
+    data = {
+        "contents": [{
+            "parts": [{"text": query}]
+        }]
+    }
+
+    try:
+        response = requests.post(url, headers=headers, json=data)
+        response.raise_for_status()  # Raises an error for non-200 responses
+
+        result = response.json()
+        
+        # Extracting AI-generated text
+        if "candidates" in result and result["candidates"]:
+            return result["candidates"][0]["content"]["parts"][0]["text"]
+        else:
+            return "Error: No valid response received from Gemini API."
+
+    except requests.exceptions.RequestException as e:
+        return f"API Request Error: {e}"
+    except KeyError:
+        return "Error: Unexpected response structure."
+
+
+# Voice Recognition Function
+def recognize_speech():
+    recognizer = sr.Recognizer()
+    
+    with sr.Microphone() as source:
+        print("Listening... (Press Ctrl+C to stop)")
+        recognizer.adjust_for_ambient_noise(source)
+        
+        # Listen indefinitely until interrupted
+        try:
+            while True:
+                audio = recognizer.listen(source, timeout=None, phrase_time_limit=None)  # No timeout, listen indefinitely
+                print("Audio captured, processing...")
+                try:
+                    text = recognizer.recognize_google(audio)
+                    print(f"User said: {text}")
+                    return text  # Return the recognized text
+                except sr.UnknownValueError:
+                    print("Sorry, I did not understand that.")
+                except sr.RequestError:
+                    print("Could not request results. Check your internet connection.")
+                
+        except KeyboardInterrupt:
+            print("\nStopped listening.")
+            return None
+
+
+# Add this function to read celestial information from the local file
+def get_local_celestial_info(object_name):
+    try:
+        with open('./desktop-app/celestial_info.txt', 'r', encoding='utf-8') as file:
+            lines = file.readlines()
+            for line in lines:
+                # Check if the line starts with the object name followed by a colon
+                if line.lower().startswith(f"{object_name.lower()}:"):
+                    # Extract and return the information after the colon
+                    return line.split(":", 1)[1].strip()
+    except FileNotFoundError:
+        print("Local file 'celestial_info.txt' not found.")
+    return None
+
+# Modify the AI response function to first check the local file
+def get_info(object_name):
+    # Check the local file first
+    local_info = get_local_celestial_info(object_name)
+    if local_info:
+        print(f"Local Info: {local_info}")
+        return local_info
+    else:
+        # If not found locally, query the AI API
+        return get_ai_response(f"what is the name of this {object_name} celestial object .Tell me some interesting information about . (tell me in 20 words without any symbols , bold ,*, etc ) ")
+
+
+
+
+################## code execution starts from here . 
+
+# Check Solar System Objects
+solar_system_available = []
+for obj in solar_system_objects:
+    alt, az = calculate_solar_system_alt_az(obj)
+    if alt is not None and alt > check_alt :
+        solar_system_available.append(obj)
+
+# Check Stars
+stars_available = []
+for star in stars:
+    ra, dec = get_ra_dec_from_catalog(star)
+    if ra and dec:
+        alt, az = calculate_star_alt_az(ra, dec, star)
+        if alt > check_alt :
+            stars_available.append(star)
+
+
+# Combine all available objects
+all_objects_available = solar_system_available + stars_available
+
+# Print the lists
+print("All Objects Available:", all_objects_available)
+
+
+#    intor 
+
+intro = get_ai_response(f"give a nice small good fascinating catchy into of stargazing session in approx 100 words and in that intro give a tour of what will we see tonight and tell about some objects as per this observation list : {all_objects_available} , and dont write symbols , * in that into" )
+if intro:
+    # Convert the response to speech
+    print(intro)
+    engine.say(intro)
+    engine.runAndWait()
+
+
+##### main loop - traverse through all the objects present.
+for obj in all_objects_available:
+    print(f"\nNow pointing at: {obj}")
+    
+    # Calculate Alt-Az for the object
+    if obj in solar_system_objects:
+        print("Using Skyfield for Solar System object.")
+        alt, az = calculate_solar_system_alt_az(obj)
+    else:
+        ra, dec = get_ra_dec_from_catalog(obj)
+        if ra and dec:
+            print("Using Astropy for Star/Deep Sky Object.")
+            alt, az = calculate_star_alt_az(float(ra), float(dec), obj)
+        else:
+            print("Object not found in catalogs.")
+            continue
+
+    # Send Alt-Az values to Arduino
+    # message = f"{alt:.4f},{az:.4f}\n"
+    # arduino.write(message.encode())
+    # print(f"Sent to Arduino: {message}")
+
+    # Get information about the object
+    object_info = get_info(obj)
+    if object_info:
+        # Convert the response to speech
+        print(object_info)
+        engine.say(object_info)
+        engine.runAndWait()
+
+    # Pause before moving to the next object
+    time.sleep(2)  # Adjust as needed
+
+
+
+# then after that . work on GUI - objects v dropdown list , voic chat button , and 3d view on gui
+#  and when all object done then close . 
